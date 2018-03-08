@@ -782,13 +782,15 @@ void executeIntro()
   if (millis() - lastPadUpdate > 20)
   {
     lastPadUpdate = millis();
+
+    static const float introFinalColor = random(4096)/4096.0f;
         
     int x = random(0, 5);
     int y = random(0, 5);
     if (DB.leds.pad[y][x].r || DB.leds.pad[y][x].g || DB.leds.pad[y][x].b)
       DB.leds.pad[y][x] = {0, 0, 0};
     else
-      DB.leds.pad[y][x] = getColorFromFloat(fmod(introFinalColor + 0.1f*(random(4096)/4096.0f), 1.0f)); //{255 - DB.leds.pad[y][x].r, 0, 0};
+      DB.leds.pad[y][x] = getColorFromFloat(fmod(introFinalColor + (0.1)*(random(4096)/4096.0f), 1.0f)); //{255 - DB.leds.pad[y][x].r, 0, 0};
     /*
     const long fadeOutStartTime = 3000;
     const long fadeOutDuration = 2000;
@@ -810,6 +812,7 @@ void executeIntro()
 
 /************** TRANSITION *********************/
 
+/*
 void executeTransition()
 {
   static byte goToPreset = -1;
@@ -842,6 +845,38 @@ void executeTransition()
   mask = newMask;
 
   animSwitchLed_Random(DB.leds.switches, 100);//50, -1);
+
+  // End transition
+  if (!fxPlayer.isPlaying())
+    DB.mode = Mode::Preset;
+}  
+*/
+
+void executeTransition()
+{
+  static byte goToPreset = -1;
+  static float transitionColor;
+  if (goToPreset != DB.inputs.preset)
+  {
+    playFxAudio(SOUND_CHANGE_PRESET);
+    goToPreset = DB.inputs.preset; 
+    transitionColor = random(999999)/999999.0f;
+    memset(&DB.leds.pad, 0, PAD_WIDTH*PAD_WIDTH*sizeof(Color));
+  }
+  animSwitchLed_Random(DB.leds.switches, 100);//50, -1);
+
+  static unsigned long lastPadUpdate = 0;
+  if (millis() - lastPadUpdate > 10)
+  {
+    lastPadUpdate = millis();
+
+    int x = random(0, 5);
+    int y = random(0, 5);
+    if (DB.leds.pad[y][x].r || DB.leds.pad[y][x].g || DB.leds.pad[y][x].b)
+      DB.leds.pad[y][x] = {0, 0, 0};
+    else
+      DB.leds.pad[y][x] = getColorFromFloat(fmod(transitionColor + (0.1)*(random(4096)/4096.0f), 1.0f));
+  }
 
   // End transition
   if (!fxPlayer.isPlaying())
