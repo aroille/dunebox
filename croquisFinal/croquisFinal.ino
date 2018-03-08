@@ -1,6 +1,6 @@
 
 #define GLOBAL_VOLUME         0.99f   // [0.0 - 1.0]
-#define PIXEL_MAX_INTENSITY   100    // [0 - 255]
+#define PIXEL_MAX_INTENSITY   150    // [0 - 255]
 #define PIXEL_REFRESH_RATE    60     // Hz
 
 /*********** SD CARD CONTENT ****************/
@@ -117,11 +117,18 @@ struct Color
 {
   byte r, g, b;
 };
+Color operator*(float a, const Color& color) { return {a*color.r, a*color.g, a*color.b}; } // a = [0.0 - 1.0]
 
 struct Leds
 {
   float switches[SWITCH_COUNT];
   Color pad[PAD_WIDTH][PAD_WIDTH];
+};
+
+struct Audio
+{
+  float rmsGlobal;
+  float rmsFx;
 };
 
 enum Mode
@@ -138,7 +145,7 @@ struct DuneBox
   Inputs inputs;
   Events events;
   Leds   leds;
-  float  audioRms;
+  Audio  audio;
 };
 
 DuneBox DB;
@@ -332,10 +339,7 @@ void updateLeds()
 }
 
 
-short joystickCoordX, joystickCoordY = 0;
-short lastJoystickCoordX, lastJoystickCoordY = 0;
-long lastJoystickCoordDebounceToggle = 0;
-long joystickCoordDebounceDuration = 5; //ms
+
 
 bool getPadIndexFromAnalogicJoystick(short& padX, short& padY)
 {
@@ -369,7 +373,11 @@ bool getPadIndexFromAnalogicJoystick(short& padX, short& padY)
   return true;
 }
 
-float padLedIntensityFromJoystick[PAD_WIDTH][PAD_WIDTH] = {0};
+unsigned long padJoystickTime[PAD_WIDTH][PAD_WIDTH] = {0};
+short joystickCoordX, joystickCoordY = 0;
+short lastJoystickCoordX, lastJoystickCoordY = 0;
+long lastJoystickCoordDebounceToggle = 0;
+long joystickCoordDebounceDuration = 5; //ms
 void updateJoystickCoord()
 {
   short readX, readY;
@@ -380,10 +388,10 @@ void updateJoystickCoord()
     
   if ((millis() - lastJoystickCoordDebounceToggle) > joystickCoordDebounceDuration)
   {
-    if (readX != -1 && readY != -1 && (readX != joystickCoordX || readY != joystickCoordY))
+    if (joystickInUsed && (readX != joystickCoordX || readY != joystickCoordY))
     {
-      DB.events.bt.pad[readY][readX] = Events::Down;
-      padLedIntensityFromJoystick[readY][readX] = 1.0f;
+      
+      padJoystickTime[readY][readX] = millis();
     }
       
     joystickCoordX = readX;
@@ -432,58 +440,6 @@ Color getColorFromFloat(float x)
   return color;
 }
 
-float playingSoundAmplitude[4] = {0.0f};
-void updateLedPattern()
-{
-  static byte currentLine = 0;
-  static byte linePeriod = 10; // change line every 5 update calls
-  static short linePeriodCount = 0;
-  static float lineDirection = 1.f;
-  static float colorSpeed = 0.005f;
-  static float colorFloat = 0.f;
-  
-  linePeriodCount++;
-  colorFloat += colorSpeed;
-  
-  if (colorFloat > 1.f)
-    colorFloat -= 1.f;
-  if (colorFloat < 0.f)
-    colorFloat += 1.f;
-
-  // update current line
-  if (linePeriodCount>=linePeriod)
-  {
-    if ((currentLine == 0) || (currentLine == (PAD_WIDTH-1)))
-      lineDirection *= -1;
-    currentLine = (currentLine+lineDirection);
-    
-    linePeriodCount = 0;
-  }
-
-  Color color = getColorFromFloat(colorFloat);
-  /*
-  Color color = {255, 0, 0};
-  color.r = 0;
-  color.g = 255*2;
-  color.b = 255*2;
- */
-  for (byte y = 0; y<PAD_WIDTH; ++y)
-  {
-    for (byte x = 0; x<PAD_WIDTH; ++x)
-    {
-      padLedIntensityFromJoystick[y][x] -= 0.05f;
-      float ledIntensity = padLedIntensityFromJoystick[y][x];
-      //float ledIntensity = (y == currentLine) ? 1.0f : 0.0f;// + 0.1 * ((y+1)%PAD_WIDTH == currentLine);
-      //float ledIntensity = (y == currentLine) ? 1.0f : 0.0f;// + 0.1 * ((y+1)%PAD_WIDTH == currentLine);
-      //float ledIntensity = playingSoundAmplitude * (y == 0) * (x == 0);
-      if (DB.inputs.bt.pad[y][x])
-        padLedIntensityFromJoystick[y][x] = 1.0f;
-
-      DB.leds.pad[y][x] = {color.r * ledIntensity, color.g * ledIntensity, color.b * ledIntensity};
-    }
-  }
-}
-
 
 
 unsigned long lastPixelRefresh = 0;
@@ -492,7 +448,7 @@ void updatePadLeds()
   if (millis() - lastPixelRefresh < PIXEL_REFRESH_PERIOD)
     return;
 
-  updateLedPattern();
+  //updateLedPattern();
 
   lastPixelRefresh = millis();
 }
@@ -513,27 +469,30 @@ void updatePadLeds()
 #include <SerialFlash.h>
 
 // GUItool: begin automatically generated code
-AudioPlaySdWav           playSdWav1;     //xy=437,269
-AudioPlaySdWav           playSdWav2;     //xy=440,306
-AudioPlaySdWav           playSdWav4; //xy=440,385
-AudioPlaySdWav           playSdWav3; //xy=441,346
-AudioMixer4              mixer1;         //xy=607,322
-AudioAnalyzeFFT256       fft256_1;       //xy=635,479
-AudioAnalyzeRMS          rms1;           //xy=817,481
-AudioEffectFlange        flange1;        //xy=835,322
-AudioMixer4              mixer2;         //xy=1006,341
-AudioOutputAnalog        dac1;           //xy=1148,341
+AudioPlaySdWav           playSdWav1;     //xy=335,523
+AudioPlaySdWav           playSdWav2;     //xy=338,560
+AudioPlaySdWav           playSdWav4;     //xy=338,639
+AudioPlaySdWav           playSdWav3;     //xy=339,600
+AudioMixer4              mixer1;         //xy=505,576
+AudioAnalyzeRMS          rmsFx; //xy=530,663
+AudioAnalyzeFFT256       fft256_1;       //xy=533,733
+AudioAnalyzeRMS          rmsGlobal;           //xy=713,729
+AudioEffectFlange        flange1;        //xy=733,576
+AudioMixer4              mixer2;         //xy=904,595
+AudioOutputAnalog        dac1;           //xy=1046,595
 AudioConnection          patchCord1(playSdWav1, 0, mixer1, 0);
 AudioConnection          patchCord2(playSdWav2, 0, mixer1, 1);
 AudioConnection          patchCord3(playSdWav4, 0, mixer1, 3);
 AudioConnection          patchCord4(playSdWav4, 0, fft256_1, 0);
-AudioConnection          patchCord5(playSdWav3, 0, mixer1, 2);
-AudioConnection          patchCord6(mixer1, flange1);
-AudioConnection          patchCord7(mixer1, rms1);
-AudioConnection          patchCord8(flange1, 0, mixer2, 0);
-AudioConnection          patchCord9(mixer2, dac1);
+AudioConnection          patchCord5(playSdWav4, 0, rmsFx, 0);
+AudioConnection          patchCord6(playSdWav3, 0, mixer1, 2);
+AudioConnection          patchCord7(mixer1, flange1);
+AudioConnection          patchCord8(mixer1, rmsGlobal);
+AudioConnection          patchCord9(flange1, 0, mixer2, 0);
+AudioConnection          patchCord10(mixer2, dac1);
 AudioControlSGTL5000     sgtl5000_1;     //xy=671,174
 // GUItool: end automatically generated code
+
 
 #define FLANGE_DELAY_LENGTH (24*AUDIO_BLOCK_SAMPLES)
 // Allocate the delay lines for left and right channels
@@ -620,15 +579,18 @@ void updateAudio()
   //s_freq = 8.f * rawSensorValue[ANALOG_SLIDER] / 1024.0f;
   //flange1.voices(s_idx, s_depth, s_freq);
 
-  if(rms1.available())
-    DB.audioRms = constrain(5.0f * rms1.read(), 0.0f, 1.0f);//constrain(map(rms1.read(),   0.05, 0.2, 0, 1.0), 0, 1.0); 
-
+  if(rmsGlobal.available())
+    DB.audio.rmsGlobal = constrain(5.0f * rmsGlobal.read(), 0.0f, 1.0f);
+    
+  if(rmsFx.available())
+    DB.audio.rmsFx = constrain(5.0f * rmsFx.read(), 0.0f, 1.0f);
+    
   if(fft256_1.available())
   {
-    playingSoundAmplitude[0] = fft256_1.read(0, 4);
-    playingSoundAmplitude[1] = fft256_1.read(3, 5);
-    playingSoundAmplitude[2] = fft256_1.read(4, 6);
-    playingSoundAmplitude[3] = fft256_1.read(5, 7);
+    //playingSoundAmplitude[0] = fft256_1.read(0, 4);
+    //playingSoundAmplitude[1] = fft256_1.read(3, 5);
+    //playingSoundAmplitude[2] = fft256_1.read(4, 6);
+    //0playingSoundAmplitude[3] = fft256_1.read(5, 7);
   }
 
   lastAudioParamRefresh = millis();
@@ -799,7 +761,7 @@ void arcadeButtonPlaysRandomSoundAndAnimateSwitchLeds()
   }
   */
   for (byte i=0; i<SWITCH_COUNT; ++i)
-    DB.leds.switches[i] = constrain((DB.audioRms/0.08f)-i, 0.0f, 1.0f);
+    DB.leds.switches[i] = constrain((DB.audio.rmsGlobal/0.08f)-i, 0.0f, 1.0f);
 }
 
 
@@ -815,23 +777,18 @@ void executeIntro()
     playFxAudio(SOUND_STARTUP);
 
   const bool randomizeSettings = startPlaying;
-  animSwitchLed(-1, DB.leds.switches, randomizeSettings);
+  animSwitchLed(0, DB.leds.switches, randomizeSettings);
 
   if (millis() - lastPadUpdate > 20)
   {
     lastPadUpdate = millis();
-
-    const long introDuration = 5000;
-    static const float introFinalColor = random(4096)/4096.0f;
-
-    float relativeTime = (introDuration - millis()) / (float)introDuration;
         
     int x = random(0, 5);
     int y = random(0, 5);
     if (DB.leds.pad[y][x].r || DB.leds.pad[y][x].g || DB.leds.pad[y][x].b)
       DB.leds.pad[y][x] = {0, 0, 0};
     else
-      DB.leds.pad[y][x] = getColorFromFloat(fmod(introFinalColor + (0.1)*(random(4096)/4096.0f), 1.0f)); //{255 - DB.leds.pad[y][x].r, 0, 0};
+      DB.leds.pad[y][x] = getColorFromFloat(fmod(introFinalColor + 0.1f*(random(4096)/4096.0f), 1.0f)); //{255 - DB.leds.pad[y][x].r, 0, 0};
     /*
     const long fadeOutStartTime = 3000;
     const long fadeOutDuration = 2000;
@@ -899,8 +856,9 @@ void executePresetA()
 {
   arcadeButtonPlaysRandomSoundAndAnimateSwitchLeds();
   playAudioSampleFromSwitches();
-  playAudioSamplesFromPad();
   updateJoystickCoord();
+  playAudioSamplesFromPad();
+  
   //updatePadLeds();
   testAnim();
 }
@@ -1104,18 +1062,15 @@ void testAnim()
   //if (millis() - lastPixelRefresh < PIXEL_REFRESH_PERIOD)
   //  return;
 
-  static float baseFloatColor = 0;
-  baseFloatColor += 0.00015f * DB.inputs.slider/1024.f;
-  baseFloatColor = fmod(baseFloatColor, 1.0f);
+  static float mainColorFloat = 0;
+  mainColorFloat += 0.00015f * DB.inputs.slider/1024.f;
+  mainColorFloat = fmod(mainColorFloat, 1.0f);
 
-  Color colorPressed = getColorFromFloat(baseFloatColor);
-  Color colorSlider  = getColorFromFloat(fmod(baseFloatColor + 0.5f, 1.0f));
+  Color mainColor = getColorFromFloat(mainColorFloat);
+  Color compColor = getColorFromFloat(fmod(mainColorFloat + 0.5f, 1.0f));
 
-  float in = 0.25f;
-  Color colorBackground = {colorSlider.r *in, colorSlider.g *in, colorSlider.b *in};
-  
-  in = 1.0f;
-  Color colorPattern = {colorSlider.r *in, colorSlider.g *in, colorSlider.b *in};
+  Color colorBackground = (0.15 + 0.5*DB.audio.rmsFx) * compColor;
+  Color colorPattern = 0.5 * compColor;
     
   unsigned long currentTime = millis();
   static AnimPattern_Cross pattern[PAD_WIDTH][PAD_WIDTH];
@@ -1130,16 +1085,33 @@ void testAnim()
         pattern[y][x].startX = x;
         pattern[y][x].startY = y;
       }
-      //else if(DB.events.bt.pad[y][x] == Events::Up)
-      //  pattern[y][x].startTime = 0;
-      
-      bool patternValue = false;
-      for (byte py = 0; py<PAD_WIDTH; ++py)
-        for (byte px = 0; px<PAD_WIDTH; ++px)
-          patternValue |= pattern[py][px].isActive(currentTime, x, y);
 
-      const bool isPressed = DB.inputs.bt.pad[y][x];
-      DB.leds.pad[y][x] = isPressed ? colorPressed : (patternValue ? colorPattern : colorBackground);
+      const unsigned long joystickTime = millis() - padJoystickTime[y][x];
+      const unsigned long joystickTrailDuration = 500; // ms
+ 
+      if (DB.inputs.bt.pad[y][x]) // bt pressed
+      {
+         DB.leds.pad[y][x] = mainColor; 
+      }
+      else if(joystickTime < joystickTrailDuration) // joystick trail
+      {
+        float trailColorFloat = fmod(mainColorFloat + (joystickTime/(float)joystickTrailDuration)*0.5f, 1.0f);
+        DB.leds.pad[y][x] = getColorFromFloat(trailColorFloat);
+      }
+      else
+      {  
+        //else if(DB.events.bt.pad[y][x] == Events::Up)
+        //  pattern[y][x].startTime = 0;
+        
+        bool patternValue = false;
+        for (byte py = 0; py<PAD_WIDTH; ++py)
+          for (byte px = 0; px<PAD_WIDTH; ++px)
+            patternValue |= pattern[py][px].isActive(currentTime, x, y);
+  
+        const bool isPressed = DB.inputs.bt.pad[y][x];
+        DB.leds.pad[y][x] = patternValue ? colorPattern : colorBackground;
+      }
+      
     }
   }
 
