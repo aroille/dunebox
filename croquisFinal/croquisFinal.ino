@@ -1,5 +1,5 @@
 
-#define GLOBAL_VOLUME         0.99f   // [0.0 - 1.0]
+#define GLOBAL_VOLUME         1.0f   // [0.0 - 1.0]
 #define PIXEL_MAX_INTENSITY   150    // [0 - 255]
 #define PIXEL_REFRESH_RATE    60     // Hz
 
@@ -8,7 +8,7 @@
 #define SOUND_STARTUP                     "startup.wav"
 #define SOUND_CHANGE_PRESET               "preset1.wav"
 
-#define SOUND_RANDOM_PATH                 "random/%03d.wav"
+#define SOUND_RANDOM_PATH                 "random/%03lu.wav"
 #define SOUND_RANDOM_PATH_SIZE            15
 #define SOUND_RANDOM_FILE_COUNT           58
 
@@ -117,7 +117,11 @@ struct Color
 {
   byte r, g, b;
 };
-Color operator*(float a, const Color& color) { return {a*color.r, a*color.g, a*color.b}; } // a = [0.0 - 1.0]
+
+Color operator*(float a, const Color& color) // a = [0.0 - 1.0]
+{ 
+  return {(byte)(a*color.r), (byte)(a*color.g), (byte)(a*color.b)}; 
+} 
 
 struct Leds
 {
@@ -376,8 +380,8 @@ bool getPadIndexFromAnalogicJoystick(short& padX, short& padY)
 unsigned long padJoystickTime[PAD_WIDTH][PAD_WIDTH] = {0};
 short joystickCoordX, joystickCoordY = 0;
 short lastJoystickCoordX, lastJoystickCoordY = 0;
-long lastJoystickCoordDebounceToggle = 0;
-long joystickCoordDebounceDuration = 5; //ms
+unsigned long lastJoystickCoordDebounceToggle = 0;
+unsigned long joystickCoordDebounceDuration = 5; //ms
 void updateJoystickCoord()
 {
   short readX, readY;
@@ -941,7 +945,7 @@ void executePresetB()
   intensity *= 0.2 + 0.8 * DB.inputs.slider / 1024.0;
   memset(&DB.leds, 0, sizeof(DB.leds));
   if (currentIndex >= 0)
-    DB.leds.pad[PAD_WIDTH-1-(currentIndex%4)][PAD_WIDTH-1-(currentIndex/4)] = {50 * intensity, 0 * intensity, 255 * intensity};
+    DB.leds.pad[PAD_WIDTH-1-(currentIndex%4)][PAD_WIDTH-1-(currentIndex/4)] = {(byte)(50 * intensity), (byte)(0 * intensity), (byte)(255 * intensity)};
 
   currentIndex = newIndex;
 }
@@ -1104,11 +1108,26 @@ void testAnim()
   Color mainColor = getColorFromFloat(mainColorFloat);
   Color compColor = getColorFromFloat(fmod(mainColorFloat + 0.5f, 1.0f));
 
-  Color colorBackground = (0.15 + 0.5*DB.audio.rmsFx) * compColor;
+  Color colorBackground = 0.2 * compColor;
+  Color colorRmsBackground = min(1.0, 0.2 + 1.5*DB.audio.rmsFx) * compColor;
   Color colorPattern = 0.5 * compColor;
     
   unsigned long currentTime = millis();
   static AnimPattern_Cross pattern[PAD_WIDTH][PAD_WIDTH];
+
+  // mask update
+  static bool bgMask[PAD_WIDTH][PAD_WIDTH] = {{1, 1, 1, 1},{1, 1, 1, 1},{1, 1, 1, 1},{1, 1, 1, 1}};
+  
+  static unsigned long lastMaskUpdate = 0;
+  if (millis() - lastMaskUpdate > 50)
+  {
+    lastMaskUpdate = millis();
+    
+    const int x = random(0, 4);
+    const int y = random(0, 4);
+    bgMask[y][x] = !bgMask[y][x];
+  }
+  
 
   for (byte y = 0; y<PAD_WIDTH; ++y)
   {
@@ -1135,16 +1154,16 @@ void testAnim()
       }
       else
       {  
-        //else if(DB.events.bt.pad[y][x] == Events::Up)
-        //  pattern[y][x].startTime = 0;
-        
+        // get local pattern value
         bool patternValue = false;
         for (byte py = 0; py<PAD_WIDTH; ++py)
           for (byte px = 0; px<PAD_WIDTH; ++px)
             patternValue |= pattern[py][px].isActive(currentTime, x, y);
   
-        const bool isPressed = DB.inputs.bt.pad[y][x];
-        DB.leds.pad[y][x] = patternValue ? colorPattern : colorBackground;
+        Color localColorBackground;
+        localColorBackground = colorBackground;
+        
+        DB.leds.pad[y][x] = patternValue ? colorPattern : ((fxPlayer.isPlaying() && bgMask[y][x]) ? colorRmsBackground : colorBackground);
       }
       
     }
