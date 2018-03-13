@@ -6,7 +6,8 @@
 /*********** SD CARD CONTENT ****************/
 
 #define SOUND_STARTUP                     "startup.wav"
-#define SOUND_CHANGE_PRESET               "preset1.wav"
+#define SOUND_CHANGE_PRESET_UP            "up.wav"
+#define SOUND_CHANGE_PRESET_DOWN          "down.wav"
 
 #define SOUND_RANDOM_PATH                 "random/%03lu.wav"
 #define SOUND_RANDOM_PATH_SIZE            15
@@ -862,7 +863,11 @@ void executeTransition()
   static float transitionColor;
   if (goToPreset != DB.inputs.preset)
   {
-    playFxAudio(SOUND_CHANGE_PRESET);
+    if (DB.events.preset == Events::Up)
+      playFxAudio(SOUND_CHANGE_PRESET_UP);
+    else
+      playFxAudio(SOUND_CHANGE_PRESET_DOWN);
+      
     goToPreset = DB.inputs.preset; 
     transitionColor = random(999999)/999999.0f;
     memset(&DB.leds.pad, 0, PAD_WIDTH*PAD_WIDTH*sizeof(Color));
@@ -879,7 +884,7 @@ void executeTransition()
     if (DB.leds.pad[y][x].r || DB.leds.pad[y][x].g || DB.leds.pad[y][x].b)
       DB.leds.pad[y][x] = {0, 0, 0};
     else
-      DB.leds.pad[y][x] = getColorFromFloat(fmod(transitionColor + (0.1)*(random(4096)/4096.0f), 1.0f));
+      DB.leds.pad[y][x] = getColorFromFloat(fmod(transitionColor + (0.15)*(random(4096)/4096.0f), 1.0f));
   }
 
   // End transition
@@ -1176,15 +1181,11 @@ void testAnim()
 
 void loop() 
 {
-  // clear events from previous iteration
-  memset(&DB.events, 0, sizeof(DB.events));
-  
+  memset(&DB.events, 0, sizeof(DB.events)); // clear events from previous iteration
   updateInputs(); 
   //printInputs();
-  
   executeLogic();
-  //testAnim();
-
   updateLeds();
   updateAudio();
 }
+
