@@ -13,6 +13,7 @@
 #define SOUND_RANDOM_PATH_SIZE            15
 #define SOUND_RANDOM_FILE_COUNT           58
 
+
 #define SWITCH_SAMPLE_PATH                "switches/X.wav"
 #define SWITCH_SAMPLE_PATH_OFFSET         9
 
@@ -112,6 +113,11 @@ struct Events
       Event  pad[PAD_WIDTH][PAD_WIDTH];
     }bt;
   };
+};
+
+struct Vec2
+{
+ byte x, y;
 };
 
 struct Color
@@ -474,29 +480,36 @@ void updatePadLeds()
 #include <SerialFlash.h>
 
 // GUItool: begin automatically generated code
-AudioPlaySdWav           playSdWav1;     //xy=335,523
-AudioPlaySdWav           playSdWav2;     //xy=338,560
-AudioPlaySdWav           playSdWav4;     //xy=338,639
-AudioPlaySdWav           playSdWav3;     //xy=339,600
-AudioMixer4              mixer1;         //xy=505,576
-AudioAnalyzeRMS          rmsFx; //xy=530,663
-AudioAnalyzeFFT256       fft256_1;       //xy=533,733
-AudioAnalyzeRMS          rmsGlobal;           //xy=713,729
-AudioEffectFlange        flange1;        //xy=733,576
-AudioMixer4              mixer2;         //xy=904,595
-AudioOutputAnalog        dac1;           //xy=1046,595
+AudioPlaySdWav           playSdWav1;     //xy=349,401
+AudioPlaySdWav           playSdWav2;     //xy=352,438
+AudioPlaySdWav           playSdWav4;     //xy=352,517
+AudioPlaySdWav           playSdWav3;     //xy=353,478
+AudioMixer4              mixer1;         //xy=519,454
+AudioAnalyzeRMS          rmsFx;          //xy=544,541
+AudioAnalyzeFFT256       fft256_1;       //xy=547,611
+AudioAnalyzeRMS          rmsGlobal;      //xy=727,607
+AudioPlaySdRaw           playSdRaw1;     //xy=735,499
+AudioEffectFlange        flange1;        //xy=744,423
+AudioInputI2S            i2s1;           //xy=877,343
+AudioMixer4              mixer2;         //xy=918,473
+AudioRecordQueue         queue1;         //xy=1017,338
+AudioOutputAnalog        dac1;           //xy=1060,473
 AudioConnection          patchCord1(playSdWav1, 0, mixer1, 0);
 AudioConnection          patchCord2(playSdWav2, 0, mixer1, 1);
 AudioConnection          patchCord3(playSdWav4, 0, mixer1, 3);
 AudioConnection          patchCord4(playSdWav4, 0, fft256_1, 0);
 AudioConnection          patchCord5(playSdWav4, 0, rmsFx, 0);
 AudioConnection          patchCord6(playSdWav3, 0, mixer1, 2);
-AudioConnection          patchCord7(mixer1, flange1);
-AudioConnection          patchCord8(mixer1, rmsGlobal);
-AudioConnection          patchCord9(flange1, 0, mixer2, 0);
-AudioConnection          patchCord10(mixer2, dac1);
-AudioControlSGTL5000     sgtl5000_1;     //xy=671,174
+AudioConnection          patchCord7(mixer1, rmsGlobal);
+AudioConnection          patchCord8(mixer1, 0, mixer2, 0);
+AudioConnection          patchCord9(playSdRaw1, 0, mixer2, 1);
+AudioConnection          patchCord10(i2s1, 0, queue1, 0);
+AudioConnection          patchCord11(mixer2, dac1);
+AudioControlSGTL5000     sgtl5000_1;     //xy=685,52
 // GUItool: end automatically generated code
+
+
+
 
 
 #define FLANGE_DELAY_LENGTH (24*AUDIO_BLOCK_SAMPLES)
@@ -542,8 +555,12 @@ void stopFxAudio()
 
 void setupAudio()
 {
-  AudioMemory(50);
+  AudioMemory(100);
   sgtl5000_1.enable();
+
+  sgtl5000_1.inputSelect(AUDIO_INPUT_MIC);
+  sgtl5000_1.micGain(36);
+  
   dac1.analogReference(EXTERNAL);
   SPI.setMOSI(PIN_SDCARD_MOSI);
   SPI.setSCK(PIN_SDCARD_SCK);
@@ -562,12 +579,14 @@ void setupAudio()
   mixer1.gain(3, 0.50f);
 
   mixer2.gain(0, 1.0f);
-  mixer2.gain(1, 0.0f);
+  mixer2.gain(1, 1.0f);
   mixer2.gain(2, 0.0f);
   mixer2.gain(3, 0.0f);
 
   //flange1.begin(delayline,FLANGE_DELAY_LENGTH,s_idx,s_depth,s_freq);
   flange1.begin(delayline,FLANGE_DELAY_LENGTH,0,0,0);
+
+  
 }
 
 long lastAudioParamRefresh = 0;
@@ -580,6 +599,7 @@ void updateAudio()
   const float volumeMin = 0.05f; // [0.0 - 1.0]
   float channelVolume = GLOBAL_VOLUME * map(DB.inputs.rotary,   0, 1023, volumeMin*1023, volumeMax*1023) / 1023.f;
   mixer2.gain(0, channelVolume);
+  mixer2.gain(1, channelVolume);
 
   //s_freq = 8.f * rawSensorValue[ANALOG_SLIDER] / 1024.0f;
   //flange1.voices(s_idx, s_depth, s_freq);
@@ -688,6 +708,12 @@ void animSwitchLed(int animIndex, float* led, bool changeSettings)
 
 /************ PRESET COMMUN ******************/ 
 
+void updateSamplePath(char* path, byte presetIndex, byte sampleIndex)
+{
+  path[PAD_SAMPLE_PATH_BANK_OFFSET] = 'A' + presetIndex;
+  path[PAD_SAMPLE_PATH_SAMPLE_OFFSET] = 'A' + sampleIndex;
+}
+
 void playAudioSamplesFromPad()
 {
   static char path[] = PAD_SAMPLE_PATH;
@@ -698,16 +724,12 @@ void playAudioSamplesFromPad()
     {
       if (DB.events.bt.pad[y][x] != Events::Down)
         continue;
-      
-      path[PAD_SAMPLE_PATH_BANK_OFFSET] = 'A' + (DB.inputs.preset%4);
-      path[PAD_SAMPLE_PATH_SAMPLE_OFFSET] = 'A' + (x + y*PAD_WIDTH);
 
+      updateSamplePath(path, DB.inputs.preset, x + y*PAD_WIDTH);
+      
       byte playerIndex = getWavePlayerIndex();
       
-      Serial.print(DB.inputs.preset);
-      Serial.print("[");
-      Serial.print(playerIndex);
-      Serial.print("] play ");
+      Serial.print("play ");
       Serial.println(path);
   
       AudioNoInterrupts();
@@ -955,13 +977,217 @@ void executePresetB()
   currentIndex = newIndex;
 }
 
+
+File frec; // recording file
+unsigned long recByteSaved = 0;
+bool recording = false;
+
+void startRecording(const char* fileName)
+{
+  Serial.print("recording start ");
+  Serial.println(fileName);
+  
+  recording = true;
+
+  if (SD.exists(fileName)) {
+    // The SD library writes new data to the end of the
+    // file, so to start a new recording, the old file
+    // must be deleted before new data is written.
+    SD.remove(fileName);
+  }
+  frec = SD.open(fileName, FILE_WRITE);
+  if (frec)
+    queue1.begin();
+
+  recByteSaved = 0;
+}
+
+unsigned long ChunkSize = 0L;
+unsigned long Subchunk1Size = 16;
+unsigned int AudioFormat = 1;
+unsigned int numChannels = 1;
+unsigned long sampleRate = 44100;
+unsigned int bitsPerSample = 16;
+unsigned long byteRate = sampleRate * numChannels * (bitsPerSample / 8); // samplerate x channels x (bitspersample / 8)
+unsigned int blockAlign = numChannels * bitsPerSample / 8;
+byte byte1, byte2, byte3, byte4;
+
+void writeOutHeader() // WAV header
+{
+  unsigned long Subchunk2Size = recByteSaved;
+  unsigned long ChunkSize = Subchunk2Size + 36;
+  frec.seek(0);
+  frec.write("RIFF");
+  byte1 = ChunkSize & 0xff;
+  byte2 = (ChunkSize >> 8) & 0xff;
+  byte3 = (ChunkSize >> 16) & 0xff;
+  byte4 = (ChunkSize >> 24) & 0xff;
+  frec.write(byte1);  frec.write(byte2);  frec.write(byte3);  frec.write(byte4);
+  frec.write("WAVE");
+  frec.write("fmt ");
+  byte1 = Subchunk1Size & 0xff;
+  byte2 = (Subchunk1Size >> 8) & 0xff;
+  byte3 = (Subchunk1Size >> 16) & 0xff;
+  byte4 = (Subchunk1Size >> 24) & 0xff;
+  frec.write(byte1);  frec.write(byte2);  frec.write(byte3);  frec.write(byte4);
+  byte1 = AudioFormat & 0xff;
+  byte2 = (AudioFormat >> 8) & 0xff;
+  frec.write(byte1);  frec.write(byte2);
+  byte1 = numChannels & 0xff;
+  byte2 = (numChannels >> 8) & 0xff;
+  frec.write(byte1);  frec.write(byte2);
+  byte1 = sampleRate & 0xff;
+  byte2 = (sampleRate >> 8) & 0xff;
+  byte3 = (sampleRate >> 16) & 0xff;
+  byte4 = (sampleRate >> 24) & 0xff;
+  frec.write(byte1);  frec.write(byte2);  frec.write(byte3);  frec.write(byte4);
+  byte1 = byteRate & 0xff;
+  byte2 = (byteRate >> 8) & 0xff;
+  byte3 = (byteRate >> 16) & 0xff;
+  byte4 = (byteRate >> 24) & 0xff;
+  frec.write(byte1);  frec.write(byte2);  frec.write(byte3);  frec.write(byte4);
+  byte1 = blockAlign & 0xff;
+  byte2 = (blockAlign >> 8) & 0xff;
+  frec.write(byte1);  frec.write(byte2);
+  byte1 = bitsPerSample & 0xff;
+  byte2 = (bitsPerSample >> 8) & 0xff;
+  frec.write(byte1);  frec.write(byte2);
+  frec.write("data");
+  byte1 = Subchunk2Size & 0xff;
+  byte2 = (Subchunk2Size >> 8) & 0xff;
+  byte3 = (Subchunk2Size >> 16) & 0xff;
+  byte4 = (Subchunk2Size >> 24) & 0xff;
+  frec.write(byte1);  frec.write(byte2);  frec.write(byte3);  frec.write(byte4);
+  frec.close();
+  //  Serial.println("header written");
+  //  Serial.print("Subchunk2: ");
+  //  Serial.println(Subchunk2Size);
+}
+
+void stopRecording()
+{
+  Serial.println("recording stop");
+  recording = false;
+
+  queue1.end();
+  while (queue1.available() > 0) {
+    frec.write((byte*)queue1.readBuffer(), 256);
+    recByteSaved += 256;
+    queue1.freeBuffer();
+  }
+  writeOutHeader();
+  frec.close(); 
+}
+
+void continueRecording()
+{
+  if (queue1.available() >= 2) 
+  {
+    byte buffer[512];
+    // Fetch 2 blocks from the audio library and copy
+    // into a 512 byte buffer.  The Arduino SD library
+    // is most efficient when full 512 byte sector size
+    // writes are used.
+    memcpy(buffer, queue1.readBuffer(), 256);
+    queue1.freeBuffer();
+    memcpy(buffer+256, queue1.readBuffer(), 256);
+    queue1.freeBuffer();
+    // write all 512 bytes to the SD card
+    elapsedMicros usec = 0;
+    frec.write(buffer, 512);
+    recByteSaved += 512;
+    // Uncomment these lines to see how long SD writes
+    // are taking.  A pair of audio blocks arrives every
+    // 5802 microseconds, so hopefully most of the writes
+    // take well under 5802 us.  Some will take more, as
+    // the SD library also must write to the FAT tables
+    // and the SD card controller manages media erase and
+    // wear leveling.  The queue1 object can buffer
+    // approximately 301700 us of audio, to allow time
+    // for occasional high SD card latency, as long as
+    // the average write time is under 5802 us.
+    //Serial.print("SD write, us=");
+    //Serial.println(usec);
+  }
+}
+
+void stopAllPlayingAudio()
+{
+  if (playSdWav1.isPlaying()) playSdWav1.stop();
+  if (playSdWav2.isPlaying()) playSdWav2.stop();
+  if (playSdWav3.isPlaying()) playSdWav3.stop();
+  if (playSdWav4.isPlaying()) playSdWav4.stop();
+}
+
+void executePresetC()
+{
+  static bool recordingMode = false;
+  static char path[] = PAD_SAMPLE_PATH;
+  static Vec2 recordingCoord = {0, 0};
+  const Color recordingColor = {150, 0, 0};
+  
+  if (DB.events.bt.arcade == Events::Down)
+  {
+    if (recording)
+      stopRecording();
+
+    memset(&DB.leds, 0, sizeof(DB.leds));
+    DB.events.bt.arcade = Events::None;
+
+    recordingMode = !recordingMode;
+    
+    Serial.print("recordingMode: ");
+    Serial.println(recordingMode);
+  }
+
+  if (recordingMode)
+  {
+    DB.leds.switches[0] = 2.0 + 2*cos(millis()*0.003);
+    
+    if (!recording)
+    {
+      for (byte y = 0; y<PAD_WIDTH; ++y)
+      {
+        for (byte x = 0; x<PAD_WIDTH; ++x)
+        {
+          if (DB.events.bt.pad[y][x] == Events::Down && !recording)
+          {
+            recordingCoord = {x, y};
+            updateSamplePath(path, DB.inputs.preset, x + y*PAD_WIDTH);
+
+            stopAllPlayingAudio();
+            startRecording(path);
+            DB.leds.pad[y][x] = {255, 0, 0};
+            continue;
+          }
+        }
+      }
+    }
+  
+    if (DB.events.bt.pad[recordingCoord.y][recordingCoord.x] == Events::Up)
+    {
+      stopRecording();
+      DB.leds.pad[recordingCoord.y][recordingCoord.x] = {0, 0, 0};
+      
+      delay(100);
+      wavePlayer[0]->play(path);
+    }
+  
+    if (recording)
+      continueRecording();
+  }
+  else
+  { 
+    executePresetA();
+  }
+}
+
 /************** PRESET UPDATE FUNCTIONS *********************/
 
 
 void executePreset() 
 { 
   static void (*executePresetPtr[10]) () = {
-    executePresetA, 
     executePresetA,
     executePresetA,
     executePresetA,
@@ -970,6 +1196,7 @@ void executePreset()
     executePresetA,
     executePresetA,
     executePresetA,
+    executePresetC,
     executePresetB
   };
   executePresetPtr[DB.inputs.preset](); 
@@ -1025,16 +1252,13 @@ void setup()
 
   // init DuneBox
   memset(&DB, 0, sizeof(DB));
-  //DB.mode = Preset; // Skip the intro
+  DB.mode = Preset; // Skip the intro
 
   // get initial inputs
   updateInputs(true);
 }
 
-struct Vec2
-{
-  byte x, y;
-};
+
 
 /*
 class AnimPattern
