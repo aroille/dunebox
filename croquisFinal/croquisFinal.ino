@@ -466,10 +466,6 @@ void updatePadLeds()
 
 /**************** AUDIO *********************/
 
-#define WAVEPLAYER_COUNT 3
-
-
-
 #define AUDIO_PARAM_REFRESH_RATE 30 // Hz
 #define AUDIO_PARAM_REFRESH_PERIOD (1000/AUDIO_PARAM_REFRESH_RATE) // ms
 
@@ -480,36 +476,34 @@ void updatePadLeds()
 #include <SerialFlash.h>
 
 // GUItool: begin automatically generated code
-AudioPlaySdWav           playSdWav1;     //xy=349,401
-AudioPlaySdWav           playSdWav2;     //xy=352,438
-AudioPlaySdWav           playSdWav4;     //xy=352,517
-AudioPlaySdWav           playSdWav3;     //xy=353,478
-AudioMixer4              mixer1;         //xy=519,454
-AudioAnalyzeRMS          rmsFx;          //xy=544,541
-AudioAnalyzeFFT256       fft256_1;       //xy=547,611
-AudioAnalyzeRMS          rmsGlobal;      //xy=727,607
-AudioPlaySdRaw           playSdRaw1;     //xy=735,499
-AudioEffectFlange        flange1;        //xy=744,423
-AudioInputI2S            i2s1;           //xy=877,343
+AudioPlaySdWav           playSdWav1;     //xy=170,366
+AudioPlaySdWav           playSdWav3;     //xy=172,442
+AudioPlaySdWav           playSdWav2;     //xy=175,404
+AudioEffectEnvelope      envelope1;      //xy=360,359
+AudioEffectEnvelope      envelope2; //xy=360,397
+AudioEffectEnvelope      envelope3; //xy=361,436
+AudioPlaySdWav           playSdWav4;     //xy=369,546
+AudioMixer4              mixer1;         //xy=530,450
+AudioAnalyzeRMS          rmsFx;          //xy=661,541
+AudioAnalyzeRMS          rmsGlobal;      //xy=675,500
+AudioInputI2S            i2s1;           //xy=917,392
 AudioMixer4              mixer2;         //xy=918,473
-AudioRecordQueue         queue1;         //xy=1017,338
 AudioOutputAnalog        dac1;           //xy=1060,473
-AudioConnection          patchCord1(playSdWav1, 0, mixer1, 0);
-AudioConnection          patchCord2(playSdWav2, 0, mixer1, 1);
-AudioConnection          patchCord3(playSdWav4, 0, mixer1, 3);
-AudioConnection          patchCord4(playSdWav4, 0, fft256_1, 0);
-AudioConnection          patchCord5(playSdWav4, 0, rmsFx, 0);
-AudioConnection          patchCord6(playSdWav3, 0, mixer1, 2);
-AudioConnection          patchCord7(mixer1, rmsGlobal);
-AudioConnection          patchCord8(mixer1, 0, mixer2, 0);
-AudioConnection          patchCord9(playSdRaw1, 0, mixer2, 1);
-AudioConnection          patchCord10(i2s1, 0, queue1, 0);
-AudioConnection          patchCord11(mixer2, dac1);
-AudioControlSGTL5000     sgtl5000_1;     //xy=685,52
+AudioRecordQueue         queue1;         //xy=1061,392
+AudioConnection          patchCord1(playSdWav1, 0, envelope1, 0);
+AudioConnection          patchCord2(playSdWav3, 0, envelope3, 0);
+AudioConnection          patchCord3(playSdWav2, 0, envelope2, 0);
+AudioConnection          patchCord4(envelope1, 0, mixer1, 0);
+AudioConnection          patchCord5(envelope2, 0, mixer1, 1);
+AudioConnection          patchCord6(envelope3, 0, mixer1, 2);
+AudioConnection          patchCord7(playSdWav4, 0, rmsFx, 0);
+AudioConnection          patchCord8(playSdWav4, 0, mixer1, 3);
+AudioConnection          patchCord9(mixer1, rmsGlobal);
+AudioConnection          patchCord10(mixer1, 0, mixer2, 0);
+AudioConnection          patchCord11(i2s1, 0, queue1, 0);
+AudioConnection          patchCord12(mixer2, dac1);
+AudioControlSGTL5000     sgtl5000_1;     //xy=668,325
 // GUItool: end automatically generated code
-
-
-
 
 
 #define FLANGE_DELAY_LENGTH (24*AUDIO_BLOCK_SAMPLES)
@@ -519,23 +513,53 @@ int s_idx = FLANGE_DELAY_LENGTH/4;
 int s_depth = FLANGE_DELAY_LENGTH/4;
 double s_freq = 10;
 
-
-
-AudioPlaySdWav* wavePlayer[WAVEPLAYER_COUNT] = {&playSdWav1, &playSdWav2, &playSdWav3};
+#define WAVEPLAYER_COUNT 3
+AudioEffectEnvelope*        envelope[WAVEPLAYER_COUNT] = {&envelope1  , &envelope2  , &envelope3};
+AudioPlaySdWav*           wavePlayer[WAVEPLAYER_COUNT] = {&playSdWav1 , &playSdWav2 , &playSdWav3};
+unsigned long wavePlayerLastStartTime[WAVEPLAYER_COUNT] = {0};
+byte wavePlayerPadIndex[WAVEPLAYER_COUNT] = {0};
 AudioPlaySdWav& fxPlayer = playSdWav4;
-unsigned long wavePlayerLastPlayTime[WAVEPLAYER_COUNT] = {0};
 
-
-byte getWavePlayerIndex()
-{
+byte getWavePlayerIndex(byte padIndex)
+{  
   byte index = 0;
   for (uint i=0; i<WAVEPLAYER_COUNT; ++i)
   {
-    if (wavePlayerLastPlayTime[i] <= wavePlayerLastPlayTime[index])
+    if (!wavePlayer[i]->isPlaying())
+    {
+      index = i;
+      break;
+    }
+    
+    if (wavePlayerLastStartTime[i] < wavePlayerLastStartTime[index])
       index = i;
   }
-  wavePlayerLastPlayTime[index] = millis();
+  wavePlayerLastStartTime[index] = millis();
+  wavePlayerPadIndex[index] = padIndex;
   return index;
+}
+
+void stopPlayingWavePlayerIndex(byte padIndex)
+{
+  for (uint i=0; i<WAVEPLAYER_COUNT; ++i)
+    if (wavePlayerPadIndex[i] == padIndex && wavePlayer[i]->isPlaying())
+      stopAudio(i);
+}
+
+void playAudio(byte playerIndex, const char* path)
+{
+  AudioNoInterrupts();
+  envelope[playerIndex]->noteOn();
+  wavePlayer[playerIndex]->play(path);
+  AudioInterrupts();
+  delay(5);
+}
+
+void stopAudio(byte playerIndex)
+{
+  AudioNoInterrupts();
+  envelope[playerIndex]->noteOff();
+  AudioInterrupts();
 }
 
 void playFxAudio(const char* path)
@@ -584,7 +608,7 @@ void setupAudio()
   mixer2.gain(3, 0.0f);
 
   //flange1.begin(delayline,FLANGE_DELAY_LENGTH,s_idx,s_depth,s_freq);
-  flange1.begin(delayline,FLANGE_DELAY_LENGTH,0,0,0);
+  //flange1.begin(delayline,FLANGE_DELAY_LENGTH,0,0,0);
 
   
 }
@@ -609,14 +633,6 @@ void updateAudio()
     
   if(rmsFx.available())
     DB.audio.rmsFx = constrain(5.0f * rmsFx.read(), 0.0f, 1.0f);
-    
-  if(fft256_1.available())
-  {
-    //playingSoundAmplitude[0] = fft256_1.read(0, 4);
-    //playingSoundAmplitude[1] = fft256_1.read(3, 5);
-    //playingSoundAmplitude[2] = fft256_1.read(4, 6);
-    //0playingSoundAmplitude[3] = fft256_1.read(5, 7);
-  }
 
   lastAudioParamRefresh = millis();
 }
@@ -722,20 +738,13 @@ void playAudioSamplesFromPad()
   {
     for (byte x = 0; x<PAD_WIDTH; ++x)
     {
-      if (DB.events.bt.pad[y][x] != Events::Down)
-        continue;
-
-      updateSamplePath(path, DB.inputs.preset, x + y*PAD_WIDTH);
-      
-      byte playerIndex = getWavePlayerIndex();
-      
-      Serial.print("play ");
-      Serial.println(path);
-  
-      AudioNoInterrupts();
-      wavePlayer[playerIndex]->play(path);
-      AudioInterrupts();
-      delay(5);
+      if (DB.events.bt.pad[y][x] == Events::Down)
+      {
+        updateSamplePath(path, DB.inputs.preset, x + y*PAD_WIDTH);
+        const byte playerIndex = getWavePlayerIndex(y*4+x);
+        playAudio(playerIndex, path);
+      }
+        stopPlayingWavePlayerIndex(y*4+x);
     }
   }
 }
@@ -749,16 +758,7 @@ void playAudioSampleFromSwitches()
     if (DB.events.bt.switches[i] == Events::Down)
     {
       path[SWITCH_SAMPLE_PATH_OFFSET] = 'A' + i;
-      
-      byte playerIndex = getWavePlayerIndex();
-      
-      Serial.print("play ");
-      Serial.println(path);
-  
-      AudioNoInterrupts();
-      wavePlayer[playerIndex]->play(path);
-      AudioInterrupts();
-      delay(5);    
+      playAudio(getWavePlayerIndex(i), path);
     }
   }
 }
