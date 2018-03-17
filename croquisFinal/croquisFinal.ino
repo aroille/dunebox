@@ -732,6 +732,7 @@ void updateSamplePath(char* path, byte presetIndex, byte sampleIndex)
 
 void playAudioSamplesFromPad()
 {
+  static const bool presetAudioEnvelopeEnabled[10] = {1,1,0,0,0,0,0,0,0,0};
   static char path[] = PAD_SAMPLE_PATH;
   
   for (byte y = 0; y<PAD_WIDTH; ++y)
@@ -744,6 +745,7 @@ void playAudioSamplesFromPad()
         const byte playerIndex = getWavePlayerIndex(y*4+x);
         playAudio(playerIndex, path);
       }
+      else if (presetAudioEnvelopeEnabled[DB.inputs.preset] && (DB.events.bt.pad[y][x] == Events::Up))
         stopPlayingWavePlayerIndex(y*4+x);
     }
   }
